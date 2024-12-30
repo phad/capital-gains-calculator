@@ -80,10 +80,29 @@ class CurrencyConverter:
             writer.writerows([EXCHANGE_RATES_HEADER, *data_rows])
 
     def _query_hmrc_api(self, date: datetime.date) -> None:
-        # Pre 2021 we need to use the old HMRC endpoint
+        # Pre 2021 we need to use the UK National Archive of the old HMRC endpoint
+        # URLs include a datetime (presumably of the time crawled) which we'll have
+        # to select per-year. There seem to be no archives of years prior to 2015.
+        # Examples:
+        # 2015: https://webarchive.nationalarchives.gov.uk/ukgwa/20220504145914mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1115.XML
+        # 2016: https://webarchive.nationalarchives.gov.uk/ukgwa/20220505063703mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1216.xml
+        # 2017: https://webarchive.nationalarchives.gov.uk/ukgwa/20220409150415mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1217.xml
+        # 2018: https://webarchive.nationalarchives.gov.uk/ukgwa/20220409144223mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1118.xml
+        # 2019: https://webarchive.nationalarchives.gov.uk/ukgwa/20220409162528mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1219.xml
+        # 2020: https://webarchive.nationalarchives.gov.uk/ukgwa/20220505131656mp_/http://www.hmrc.gov.uk/softwaredevelopers/rates/exrates-monthly-1220.XML
+        crawl_slugs = {
+          2015: "20220504145914",
+          2016: "20220505063703",
+          2017: "20220409150415",
+          2018: "20220409144223",
+          2019: "20220409162528",
+          2020: "20220505131656",
+        }
         if date.year < NEW_ENDPOINT_FROM_YEAR:
             month_str = date.strftime("%m%y")
+            slug = crawl_slugs[date.year]
             url = (
+                f"https://webarchive.nationalarchives.gov.uk/ukgwa/{slug}mp_/"
                 "http://www.hmrc.gov.uk/softwaredevelopers/rates/"
                 f"exrates-monthly-{month_str}.xml"
             )
@@ -124,6 +143,7 @@ class CurrencyConverter:
         """Get GBP/currency rate at given date."""
         assert is_date(date)
         if date not in self.cache:
+            print("Fetching currency conversions for date %s",date)
             self._query_hmrc_api(date)
         if currency not in self.cache[date]:
             raise ExchangeRateMissingError(currency, date)

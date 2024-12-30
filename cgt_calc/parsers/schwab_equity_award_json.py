@@ -93,7 +93,7 @@ def action_from_str(label: str) -> ActionType:
     if label in {"Buy"}:
         return ActionType.BUY
 
-    if label in {"Sell", "Sale"}:
+    if label in {"Sell", "Sale", "Forced Quick Sell"}:
         return ActionType.SELL
 
     if label in {
@@ -105,16 +105,18 @@ def action_from_str(label: str) -> ActionType:
         "Funds Received",
         "Journal",
         "Cash In Lieu",
+        "MWI",
+        "Forced Disbursement",
     }:
         return ActionType.TRANSFER
 
     if label in {"Stock Plan Activity", "Deposit"}:
         return ActionType.STOCK_ACTIVITY
 
-    if label in ["Qualified Dividend", "Cash Dividend"]:
+    if label in ["Qualified Dividend", "Cash Dividend", "Dividend"]:
         return ActionType.DIVIDEND
 
-    if label in ["NRA Tax Adj", "NRA Withholding", "Foreign Tax Paid"]:
+    if label in ["NRA Tax Adj", "NRA Withholding", "Foreign Tax Paid", "Tax Witholding", "Tax Reversal"]:
         return ActionType.TAX
 
     if label == "ADR Mgmt Fee":
@@ -168,7 +170,7 @@ def _decimal_from_number_or_str(
     if float_name in row and row[float_name] is not None:
         return Decimal(row[float_name])
 
-    if field_basename in row and row[field_basename] is not None:
+    if field_basename in row and row[field_basename] is not None and row[field_basename] is not "":
         return _decimal_from_str(row[field_basename])
 
     return Decimal(0)
@@ -183,17 +185,18 @@ class SchwabTransaction(BrokerTransaction):
 
     def __init__(self, row: JsonRowType, file: str, field_names: FieldNames) -> None:
         """Create a new SchwabTransaction from a JSON row."""
+        #print(row)
         names = field_names
         description = row[names.description]
         self.raw_action = row[names.action]
         action = action_from_str(self.raw_action)
         symbol = row.get(names.symbol)
         symbol = TICKER_RENAMES.get(symbol, symbol)
-        if symbol != "GOOG":
-            # Stock split hardcoded for GOOG
+        if symbol != "GOOG" and symbol != "GOOGL":
+            # Stock split hardcoded for GOOG(L)
             raise ParsingError(
                 file,
-                f"Schwab Equity Award JSON only supports GOOG stock but found {symbol}",
+                f"Schwab Equity Award JSON only supports GOOG(L) stock but found {symbol}",
             )
         quantity = _decimal_from_number_or_str(row, names.quantity)
         initially_parsed_amount = _decimal_from_number_or_str(row, names.amount)
@@ -222,7 +225,7 @@ class SchwabTransaction(BrokerTransaction):
                 f"{details[names.award_date]} "
                 f"(ID {details[names.award_id]})"
             )
-        elif row[names.action] == "Sale":
+        elif row[names.action] == "Sale" or row[names.action] == "Forced Quick Sell":
             date = datetime.datetime.strptime(row[names.date], "%m/%d/%Y").date()
 
             # Schwab's data export sometimes lacks decimals on Sales
@@ -351,7 +354,7 @@ def read_schwab_equity_award_json_transactions(
             except json.decoder.JSONDecodeError as exception:
                 raise ParsingError(
                     transactions_file,
-                    "Cloud not parse content as JSON",
+                    "Could not parse content as JSON",
                 ) from exception
 
             for field_name, schema_version in FIELD_TO_SCHEMA.items():
@@ -371,12 +374,11 @@ def read_schwab_equity_award_json_transactions(
                     f"'{fields.transactions}' is not a list: the JSON data is not "
                     "in the expected format",
                 )
-
             transactions = [
                 SchwabTransaction(transac, transactions_file, fields)
                 for transac in data[fields.transactions]
                 # Skip as not relevant for CGT
-                if transac[fields.action] not in {"Journal", "Wire Transfer"}
+                if transac[fields.action] not in {"Journal", "Wire Transfer", "MWI", "Exercise and Sell", "Forced Disbursement", "Dividend", "Tax Withholding", "Tax Reversal"}
             ]
             transactions.reverse()
             return list(transactions)

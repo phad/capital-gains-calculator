@@ -6,6 +6,6 @@
 __pycache__
 env
 dist
-calculations.pdf
-exchange_rates.csv
+calculations*.pdf
 spin_offs.csv
+Equity*.json
